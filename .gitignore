@@ -1,0 +1,35 @@
+# Citi Bike Raw Big Data (bỏ qua vì quá nặng >5GB, vượt giới hạn 100MB của GitHub)
+data/zip/
+data/csv/
+*.zip
+*.csv
+
+# Giữ lại tầng serving gọn nhẹ để người khác clone về là chạy ngay được Dashboard
+!data/serving/
+!data/serving/*.parquet
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+
+# IDE & Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Hệ điều hành
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Temporary files
+scratch/
+*.tmp
+*.log

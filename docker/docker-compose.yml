@@ -1,0 +1,151 @@
+services:
+  # ==========================================
+  # HADOOP HDFS CLUSTER (1 NameNode + 2 DataNodes)
+  # ==========================================
+  namenode:
+    image: apache/hadoop:3.3.6
+    container_name: citibike-namenode
+    hostname: namenode
+    user: root
+    ports:
+      - "9870:9870"  # HDFS NameNode Web UI
+      - "9000:9000"  # HDFS RPC Port
+    environment:
+      - HADOOP_HOME=/opt/hadoop
+    volumes:
+      - namenode_data:/opt/hadoop/data/nameNode
+      - ./config/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml
+      - ./config/hdfs-site.xml:/opt/hadoop/etc/hadoop/hdfs-site.xml
+      - ../data:/data
+      - ../scripts:/scripts
+    command: >
+      /bin/bash -c "if [ ! -d /opt/hadoop/data/nameNode/current ]; then
+        /opt/hadoop/bin/hdfs namenode -format -force -nonInteractive;
+      fi && /opt/hadoop/bin/hdfs namenode"
+    networks:
+      - citibike-net
+    restart: unless-stopped
+
+  datanode1:
+    image: apache/hadoop:3.3.6
+    container_name: citibike-datanode1
+    hostname: datanode1
+    user: root
+    depends_on:
+      - namenode
+    ports:
+      - "9864:9864"  # DataNode 1 Web UI
+    environment:
+      - HADOOP_HOME=/opt/hadoop
+    volumes:
+      - datanode1_data:/opt/hadoop/data/dataNode
+      - ./config/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml
+      - ./config/hdfs-site.xml:/opt/hadoop/etc/hadoop/hdfs-site.xml
+    command: /opt/hadoop/bin/hdfs datanode
+    networks:
+      - citibike-net
+    restart: unless-stopped
+
+  datanode2:
+    image: apache/hadoop:3.3.6
+    container_name: citibike-datanode2
+    hostname: datanode2
+    user: root
+    depends_on:
+      - namenode
+    ports:
+      - "9865:9864"  # DataNode 2 Web UI (Host 9865)
+    environment:
+      - HADOOP_HOME=/opt/hadoop
+    volumes:
+      - datanode2_data:/opt/hadoop/data/dataNode
+      - ./config/core-site.xml:/opt/hadoop/etc/hadoop/core-site.xml
+      - ./config/hdfs-site.xml:/opt/hadoop/etc/hadoop/hdfs-site.xml
+    command: /opt/hadoop/bin/hdfs datanode
+    networks:
+      - citibike-net
+    restart: unless-stopped
+
+  # ==========================================
+  # APACHE SPARK 3.5 CLUSTER (1 Master + 2 Workers)
+  # ==========================================
+  spark-master:
+    image: apache/spark:3.5.1
+    container_name: citibike-spark-master
+    hostname: spark-master
+    depends_on:
+      - namenode
+    ports:
+      - "8080:8080"  # Spark Master Web UI
+      - "7077:7077"  # Spark Master RPC Port
+      - "4040:4040"  # Spark Driver / App Web UI
+    environment:
+      - SPARK_NO_DAEMONIZE=1
+    volumes:
+      - ../jobs:/opt/spark/jobs
+      - ../data:/data
+      - ./config/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf
+      - ./config/core-site.xml:/opt/spark/conf/core-site.xml
+      - ./config/hdfs-site.xml:/opt/spark/conf/hdfs-site.xml
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+    networks:
+      - citibike-net
+    restart: unless-stopped
+
+  spark-worker-1:
+    image: apache/spark:3.5.1
+    container_name: citibike-spark-worker-1
+    hostname: spark-worker-1
+    depends_on:
+      - spark-master
+    ports:
+      - "8081:8081"  # Spark Worker 1 Web UI
+    environment:
+      - SPARK_NO_DAEMONIZE=1
+      - SPARK_WORKER_CORES=2
+      - SPARK_WORKER_MEMORY=3g
+    volumes:
+      - ../jobs:/opt/spark/jobs
+      - ../data:/data
+      - ./config/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf
+      - ./config/core-site.xml:/opt/spark/conf/core-site.xml
+      - ./config/hdfs-site.xml:/opt/spark/conf/hdfs-site.xml
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
+    networks:
+      - citibike-net
+    restart: unless-stopped
+
+  spark-worker-2:
+    image: apache/spark:3.5.1
+    container_name: citibike-spark-worker-2
+    hostname: spark-worker-2
+    depends_on:
+      - spark-master
+    ports:
+      - "8082:8081"  # Spark Worker 2 Web UI (Host 8082)
+    environment:
+      - SPARK_NO_DAEMONIZE=1
+      - SPARK_WORKER_CORES=2
+      - SPARK_WORKER_MEMORY=3g
+    volumes:
+      - ../jobs:/opt/spark/jobs
+      - ../data:/data
+      - ./config/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf
+      - ./config/core-site.xml:/opt/spark/conf/core-site.xml
+      - ./config/hdfs-site.xml:/opt/spark/conf/hdfs-site.xml
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
+    networks:
+      - citibike-net
+    restart: unless-stopped
+
+volumes:
+  namenode_data:
+    driver: local
+  datanode1_data:
+    driver: local
+  datanode2_data:
+    driver: local
+
+networks:
+  citibike-net:
+    driver: bridge

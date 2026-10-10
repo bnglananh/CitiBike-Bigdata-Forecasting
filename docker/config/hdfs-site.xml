@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?xml-stylesheet type="text/xsl" href="configuration.xsl"?>
+<configuration>
+    <!-- Số lượng bản sao (Replication factor = 2 cho 2 DataNode) -->
+    <property>
+        <name>dfs.replication</name>
+        <value>2</value>
+    </property>
+
+    <!-- Kích thước Block chuẩn 128 MB -->
+    <property>
+        <name>dfs.blocksize</name>
+        <value>134217728</value>
+    </property>
+
+    <!-- Thư mục lưu trữ metadata của NameNode -->
+    <property>
+        <name>dfs.namenode.name.dir</name>
+        <value>file:///opt/hadoop/data/nameNode</value>
+    </property>
+
+    <!-- Thư mục lưu trữ blocks dữ liệu của DataNode -->
+    <property>
+        <name>dfs.datanode.data.dir</name>
+        <value>file:///opt/hadoop/data/dataNode</value>
+    </property>
+
+    <!-- Địa chỉ RPC và Web UI của NameNode -->
+    <property>
+        <name>dfs.namenode.rpc-address</name>
+        <value>namenode:9000</value>
+    </property>
+    <property>
+        <name>dfs.namenode.http-address</name>
+        <value>0.0.0.0:9870</value>
+    </property>
+
+    <!-- Tắt kiểm tra quyền để dễ dàng chia sẻ thao tác giữa các container -->
+    <property>
+        <name>dfs.permissions.enabled</name>
+        <value>false</value>
+    </property>
+</configuration>
