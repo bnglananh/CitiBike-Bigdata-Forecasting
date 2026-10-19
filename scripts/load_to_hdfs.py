@@ -55,11 +55,19 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Đưa dữ liệu CSV lên HDFS")
     parser.add_argument("--months", type=str, default="1", 
                         help="Danh sách tháng cần đưa lên HDFS, ví dụ: '1' hoặc '1,2,3' hoặc '1-12'")
+    parser.add_argument("--seasonal", action="store_true",
+                        help="Đưa 4 tháng đại diện 4 mùa (01, 04, 07, 10) lên HDFS")
+    parser.add_argument("--all", action="store_true",
+                        help="Đưa toàn bộ 12 tháng năm 2024 (01-12) lên HDFS")
     parser.add_argument("--year", type=int, default=2024, help="Năm dữ liệu")
     args = parser.parse_args()
     
     months_to_run = []
-    if "-" in args.months:
+    if args.seasonal:
+        months_to_run = [1, 4, 7, 10]
+    elif args.all:
+        months_to_run = list(range(1, 13))
+    elif "-" in args.months:
         start_m, end_m = map(int, args.months.split("-"))
         months_to_run = list(range(start_m, end_m + 1))
     else:

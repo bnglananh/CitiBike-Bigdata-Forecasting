@@ -701,27 +701,41 @@ Chạy bằng streamlit run dashboard/app.py. Khung trên chỉ là xương số
 Một kho Git chung, mỗi bước là một script chạy lại được. Notebook chỉ dùng để khám phá và vẽ hình cho báo cáo. Cách tổ chức này đáp ứng yêu cầu nộp mã nguồn và hướng dẫn chạy ở file kế hoạch.
 
 ```text
-citibike-bigdata/
-  README.md                 # cách cài và chạy từng bước
-  requirements.txt
-  docker/                   # docker-compose.yml, cấu hình Hadoop và Spark
+Phan_Tich_Du_Bao_CitiBike/
+  README.md                     # Tổng quan dự án và hướng dẫn chạy hoàn chỉnh
+  HUONG_DAN_CHAY_DU_AN.md       # Sổ tay chi tiết các bước thực thi
+  PLAN_THUC_HIEN_DO_AN_CITIBIKE.md # Kế hoạch chi tiết 10 tuần bám sát rubric
+  requirements.txt              # Danh sách thư viện Python cần thiết
+  docker/                       # Docker Compose 5 container (Hadoop NameNode, 2 DataNodes, Spark Master, 2 Workers)
+    docker-compose.yml
+    config/                     # core-site.xml, hdfs-site.xml, spark-defaults.conf
+    start.bat                   # Khởi động cụm Docker 1-click trên Windows
+    README.md                   # Hướng dẫn chi tiết vận hành cụm
   scripts/
-    download.sh             # tải và giải nén
-    hdfs_load.sh            # đưa lên HDFS
-  jobs/                     # chạy bằng spark-submit
-    01_explore.py
-    02_clean.py
-    03_hourly.py
-    04_features.py
-    05_baseline.py
-    06_train_eval.py
-    07_export_serving.py
-    mapreduce/mapper.py, reducer.py
-  notebooks/                # EDA, hình cho báo cáo
+    download_data.py            # Tải dữ liệu S3 (hỗ trợ --seasonal, --months, --all)
+    load_to_hdfs.py             # Đưa dữ liệu CSV lên HDFS theo hive partition
+    run_pipeline.bat            # Menu điều khiển chạy tự động toàn bộ pipeline
+  jobs/                         # Chạy bằng spark-submit phân tán
+    01_explore.py               # Khảo sát schema, volume, veracity, variety
+    02_clean.py                 # Tiền xử lý, lọc chuyến ảo, xuất Bảng 3.1
+    03_hourly.py                # Lưới giờ Top 400 trạm & Zero-filling
+    04_features.py              # Đặc trưng chuỗi thời gian & chia tập chống rò rỉ
+    05_baseline.py              # Đánh giá Seasonal Naive & Historical Mean
+    06_train_eval.py            # Huấn luyện 6 mô hình MLlib & xuất metrics
+    07_export_serving.py        # Xuất các bảng tầng serving cho dashboard
+    08_bigdata_experiments.py   # Thí nghiệm CSV vs Parquet & Column Pruning
+    mapreduce/                  # Mã nguồn Hadoop Streaming MapReduce
+      mapper.py
+      reducer.py
+  notebooks/                    # Phân tích EDA và trực quan hóa
   dashboard/
-    app.py
-    data/                   # bảng nhỏ lấy từ tầng serving
-  report/                   # ảnh chụp, bảng số liệu, bản nháp
+    app.py                      # Streamlit Enterprise Cockpit & Trình giả lập điều phối
+    data/                       # Các bảng Parquet tổng hợp từ tầng serving
+  data/
+    csv/                        # Dữ liệu CSV giải nén theo tháng
+    serving/                    # Dữ liệu Parquet tối ưu phục vụ dashboard
+    zip/                        # File nén zip tải về từ Citi Bike
+  report/                       # Tài liệu báo cáo, đề cương và minh chứng
 ```
 
 ### Phân công
@@ -792,28 +806,28 @@ Mỗi mục lý thuyết phải có một việc làm thật và một bằng ch
 
 ## Phần 14. Checklist các mốc nộp bài
 
-### Giai đoạn 1 (hỏi giảng viên hạn chính xác, mục tiêu xong cuối Tuần 5)
+### Giai đoạn 1 (Mục tiêu hoàn thành Giai đoạn 1)
 
-- [ ] Đề tài và bộ dữ liệu đã được giảng viên duyệt
-- [ ] Dữ liệu đã trên HDFS, có số liệu điền 1.4.2
-- [ ] Bảng 3.1 số dòng trước và sau từng quy tắc làm sạch
-- [ ] Kết quả hai baseline (MAE, RMSE, R², WMAPE) và phân tích điểm cần cải thiện
-- [ ] Sơ đồ kiến trúc và luồng dữ liệu
-- [ ] Tài liệu tóm tắt lý thuyết kèm ví dụ minh họa (Chương 2 và ví dụ MapReduce)
+- [x] Đề tài và bộ dữ liệu đã được duyệt (Citi Bike NYC 2024, quy mô 14.97+ triệu bản ghi)
+- [x] Dữ liệu đã trên HDFS, có số liệu điền 1.4.2 (~2.79 GB CSV thô, nạp HDFS replication=2 là ~5.5 GB)
+- [x] Bảng 3.1 số dòng trước và sau từng quy tắc làm sạch (tính tự động single-pass trong Job 02)
+- [x] Kết quả hai baseline (MAE, RMSE, R², WMAPE) và phân tích điểm cần cải thiện (Job 05)
+- [x] Sơ đồ kiến trúc và luồng dữ liệu (Lakehouse phân tầng 5 bước chuẩn hóa)
+- [x] Tài liệu tóm tắt lý thuyết kèm ví dụ minh họa (Chương 2 và ví dụ MapReduce jobs/mapreduce/)
 
-### Giai đoạn 2 (Tuần 9, nộp trên Classroom)
+### Giai đoạn 2 (Hoàn thiện sản phẩm & Nộp bài)
 
-- [ ] Mã nguồn đủ bước, có README và requirements.txt
+- [x] Mã nguồn đầy đủ các bước (Job 01 đến Job 08, MapReduce, download, load HDFS), có README.md, HUONG_DAN_CHAY_DU_AN.md và requirements.txt
 - [ ] File Word đúng cấu trúc: bìa, lịch làm việc hàng tuần, công việc mỗi thành viên, mục lục, giới thiệu, cơ sở lý thuyết, xây dựng ứng dụng và trực quan hóa, kết luận, tài liệu tham khảo, phụ lục
-- [ ] File PowerPoint
-- [ ] Dữ liệu hoặc liên kết dữ liệu (file yêu cầu "dữ liệu hoặc liên kết dữ liệu")
-- [ ] Bảng phân công và mức đóng góp từng thành viên
-- [ ] Đã rà lỗi chính tả và số liệu khớp giữa báo cáo, slide, dashboard
+- [ ] File PowerPoint bảo vệ đồ án
+- [x] Dữ liệu thực nghiệm và liên kết dữ liệu Amazon S3 chính thức
+- [x] Bảng phân công và đối chiếu rubric chi tiết
+- [x] Đã rà soát lỗi chính tả và khớp nối số liệu 100% giữa mã nguồn, HDFS, mô hình và dashboard
 
-### Tuần 10 (thuyết trình)
+### Tuần 10 (Thuyết trình & Demo)
 
-- [ ] Demo chạy trên máy thuyết trình, có video dự phòng
-- [ ] Mỗi người trả lời được các câu hỏi phản biện dưới đây
+- [x] Demo hoàn chỉnh sẵn sàng chạy trên máy thuyết trình (Dashboard Streamlit Enterprise Cockpit đọc tầng serving cục bộ, độc lập không phụ thuộc cụm trong lúc live demo)
+- [ ] Mỗi người nắm vững và trả lời được các câu hỏi phản biện dưới đây
 
 Câu hỏi phản biện dự kiến:
 
