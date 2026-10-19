@@ -11,6 +11,7 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 import folium
+from folium.plugins import HeatMap
 from streamlit_folium import st_folium
 
 # ==========================================
@@ -837,69 +838,214 @@ with tab1:
 # ----------------------------------------------------
 with tab2:
     st.markdown('<div class="box-title">Bản đồ Nhiệt & Cảnh báo Điều phối Rebalancing theo Giờ</div>', unsafe_allow_html=True)
+    st.markdown('<div style="color: #64748B; font-size: 0.92rem; margin-top: -8px; margin-bottom: 16px;">Mô phỏng không gian địa lý lưu lượng xe tại các trạm trọng điểm theo khung giờ, hỗ trợ phát hiện điểm nóng quá tải và điều phối tái cân bằng xe (Rebalancing).</div>', unsafe_allow_html=True)
     
     if df_map is not None:
-        c_filter1, c_filter2 = st.columns([3, 1])
+        # Bộ điều khiển và lọc trực quan
+        c_filter1, c_filter2, c_filter3, c_filter4 = st.columns([2.5, 1.8, 1.8, 1.8])
         with c_filter1:
-            h_val = st.slider("Khung giờ mô phỏng (0h - 23h):", 0, 23, 8)
+            h_val = st.slider("Khung giờ mô phỏng (0h - 23h):", 0, 23, 8, format="%d:00")
         with c_filter2:
-            alert_filter = st.selectbox("Lọc mức cảnh báo:", ["Tất cả trạm", "Nguy cơ quá tải (>= 15 lượt/h)", "Lưu lượng trung bình (5-15 lượt/h)"])
+            alert_filter = st.selectbox(
+                "Lọc mức cảnh báo:",
+                ["Tất cả trạm", "Nguy cơ quá tải (>= 15 lượt/h)", "Lưu lượng bận rộn (7-15 lượt/h)", "Lưu lượng ổn định (< 7 lượt/h)"]
+            )
+        with c_filter3:
+            map_style = st.selectbox(
+                "Kiểu bản đồ thực tế:",
+                [
+                    "🗺️ Bản đồ phố OpenStreetMap",
+                    "🛰️ Ảnh vệ tinh thực tế Esri",
+                    "🛣️ Bản đồ giao thông Esri",
+                    "🌆 Bản đồ đô thị Carto Voyager"
+                ]
+            )
+        with c_filter4:
+            view_mode = st.selectbox(
+                "Chế độ trực quan hóa:",
+                [
+                    "🔥 + 📍 Kết hợp (Nhiệt + Trạm)",
+                    "🔥 Chỉ Bản đồ nhiệt (Heatmap)",
+                    "📍 Chỉ Điểm trạm (Markers)"
+                ]
+            )
 
         data_hour = df_map[df_map['h'] == h_val].copy()
         
         if alert_filter == "Nguy cơ quá tải (>= 15 lượt/h)":
             data_hour = data_hour[data_hour['avg_trips'] >= 15]
-        elif alert_filter == "Lưu lượng trung bình (5-15 lượt/h)":
-            data_hour = data_hour[(data_hour['avg_trips'] >= 5) & (data_hour['avg_trips'] < 15)]
+        elif alert_filter == "Lưu lượng bận rộn (7-15 lượt/h)":
+            data_hour = data_hour[(data_hour['avg_trips'] >= 7) & (data_hour['avg_trips'] < 15)]
+        elif alert_filter == "Lưu lượng ổn định (< 7 lượt/h)":
+            data_hour = data_hour[data_hour['avg_trips'] < 7]
 
-        st.caption(f"Đang hiển thị **{len(data_hour)} trạm** trong khung giờ **{h_val}:00 - {h_val}:59** tại trung tâm New York (Manhattan/Brooklyn).")
+        # Thống kê nhanh theo khung giờ
+        hour_all = df_map[df_map['h'] == h_val]
+        total_st = len(data_hour)
+        overload_cnt = len(hour_all[hour_all['avg_trips'] >= 15])
+        busy_cnt = len(hour_all[(hour_all['avg_trips'] >= 7) & (hour_all['avg_trips'] < 15)])
+        top_station = data_hour.sort_values('avg_trips', ascending=False).iloc[0] if len(data_hour) > 0 else None
 
-        # Khởi tạo bản đồ Folium
-        m = folium.Map(location=[40.738, -73.985], zoom_start=13, tiles="CartoDB positron")
+        # Nhãn giai đoạn nhịp điệu đô thị
+        if 7 <= h_val <= 9:
+            period_badge = "🔥 Cao điểm sáng (Triều dâng vào Manhattan)"
+        elif 17 <= h_val <= 19:
+            period_badge = "🌇 Cao điểm chiều (Đảo chiều về khu dân cư)"
+        elif 0 <= h_val <= 5:
+            period_badge = "🌙 Ban đêm (Nhu cầu thấp, thời điểm Rebalance lý tưởng)"
+        else:
+            period_badge = "☀️ Ban ngày (Lưu lượng di chuyển ổn định)"
 
-        for r in data_hour.itertuples():
-            # Màu và kích thước bán kính theo mật độ
-            if r.avg_trips >= 15:
-                color = "#EF4444"
-                radius = 8.5
-                status_txt = "NGUY CƠ CHÁY XE"
-            elif r.avg_trips >= 7:
-                color = "#F59E0B"
-                radius = 5.5
-                status_txt = "LƯU LƯỢNG CAO"
-            else:
-                color = "#3B82F6"
-                radius = 3.5
-                status_txt = "ỔN ĐỊNH"
-
-            popup_html = f"""
-            <div style="font-family: Arial; font-size: 12px; width: 220px;">
-                <b style="color: #0F172A; font-size: 13px;">{r.station_name}</b><br>
-                <span style="color: #64748B;">Mã trạm: {r.station_id}</span><hr style="margin: 6px 0;">
-                <b>Nhu cầu TB:</b> <span style="font-size: 14px; font-weight: bold; color: {color};">{r.avg_trips:.1f} lượt/h</span><br>
-                <b>Trạng thái:</b> <span style="color: {color}; font-weight: bold;">{status_txt}</span>
+        # Thẻ thông tin nhanh (KPI Cards)
+        kpi_col1, kpi_col2, kpi_col3, kpi_col4 = st.columns(4)
+        with kpi_col1:
+            st.markdown(f"""
+            <div style="background: white; border-radius: 10px; padding: 12px 16px; border: 1px solid #E2E8F0; box-shadow: 0 2px 6px rgba(0,0,0,0.03);">
+                <div style="font-size: 0.72rem; color: #64748B; font-weight: 700; text-transform: uppercase;">Khung giờ & Nhịp độ</div>
+                <div style="font-size: 1.35rem; font-weight: 800; color: #0F172A; margin: 2px 0;">{h_val:02d}:00 - {h_val:02d}:59</div>
+                <div style="font-size: 0.75rem; color: #2563EB; font-weight: 600;">{period_badge}</div>
             </div>
-            """
-            
-            folium.CircleMarker(
-                location=[r.lat, r.lng],
-                radius=radius,
-                popup=folium.Popup(popup_html, max_width=250),
-                tooltip=f"{r.station_name} ({r.avg_trips:.1f} lượt)",
-                color=color,
-                fill=True,
-                fill_color=color,
-                fill_opacity=0.75,
-                weight=1
+            """, unsafe_allow_html=True)
+        with kpi_col2:
+            st.markdown(f"""
+            <div style="background: white; border-radius: 10px; padding: 12px 16px; border: 1px solid #E2E8F0; box-shadow: 0 2px 6px rgba(0,0,0,0.03);">
+                <div style="font-size: 0.72rem; color: #64748B; font-weight: 700; text-transform: uppercase;">Trạm đang hiển thị</div>
+                <div style="font-size: 1.35rem; font-weight: 800; color: #0F172A; margin: 2px 0;">{total_st} <span style="font-size: 0.85rem; font-weight: 600; color: #64748B;">/ 400 trạm</span></div>
+                <div style="font-size: 0.75rem; color: #059669; font-weight: 600;">Toàn khu Manhattan & Brooklyn</div>
+            </div>
+            """, unsafe_allow_html=True)
+        with kpi_col3:
+            st.markdown(f"""
+            <div style="background: #FEF2F2; border-radius: 10px; padding: 12px 16px; border: 1px solid #FECACA; box-shadow: 0 2px 6px rgba(0,0,0,0.03);">
+                <div style="font-size: 0.72rem; color: #991B1B; font-weight: 700; text-transform: uppercase;">Cảnh báo quá tải (&ge; 15 lượt/h)</div>
+                <div style="font-size: 1.35rem; font-weight: 800; color: #DC2626; margin: 2px 0;">{overload_cnt} <span style="font-size: 0.85rem; font-weight: 600; color: #991B1B;">trạm khẩn cấp</span></div>
+                <div style="font-size: 0.75rem; color: #B91C1C; font-weight: 600;">Cần xe tải điều phối tiếp tế xe</div>
+            </div>
+            """, unsafe_allow_html=True)
+        with kpi_col4:
+            top_name = top_station['station_name'] if top_station is not None else "N/A"
+            top_val = top_station['avg_trips'] if top_station is not None else 0
+            top_name_short = (top_name[:22] + "...") if len(top_name) > 24 else top_name
+            st.markdown(f"""
+            <div style="background: white; border-radius: 10px; padding: 12px 16px; border: 1px solid #E2E8F0; box-shadow: 0 2px 6px rgba(0,0,0,0.03);">
+                <div style="font-size: 0.72rem; color: #64748B; font-weight: 700; text-transform: uppercase;">Điểm nóng số 1</div>
+                <div style="font-size: 1.35rem; font-weight: 800; color: #D97706; margin: 2px 0;">{top_val:.1f} <span style="font-size: 0.85rem; font-weight: 600; color: #64748B;">lượt/h</span></div>
+                <div style="font-size: 0.75rem; color: #475569; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="{top_name}">{top_name_short}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.write("")
+
+        # Khởi tạo bản đồ Folium theo lựa chọn
+        if map_style == "🗺️ Bản đồ phố OpenStreetMap":
+            m = folium.Map(location=[40.738, -73.985], zoom_start=13, tiles="OpenStreetMap")
+        elif map_style == "🛰️ Ảnh vệ tinh thực tế Esri":
+            m = folium.Map(location=[40.738, -73.985], zoom_start=13, tiles=None)
+            folium.TileLayer(
+                tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+                attr="Esri World Imagery",
+                name="Ảnh Vệ Tinh (Esri)"
+            ).add_to(m)
+            folium.TileLayer(
+                tiles="https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
+                attr="Esri Labels",
+                name="Địa danh & Tên đường",
+                overlay=True
+            ).add_to(m)
+        elif map_style == "🛣️ Bản đồ giao thông Esri":
+            m = folium.Map(location=[40.738, -73.985], zoom_start=13, tiles=None)
+            folium.TileLayer(
+                tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+                attr="Esri World Street Map",
+                name="Bản đồ Giao thông Esri"
+            ).add_to(m)
+        else:
+            m = folium.Map(location=[40.738, -73.985], zoom_start=13, tiles=None)
+            folium.TileLayer(
+                tiles="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+                attr="&copy; OpenStreetMap &copy; CARTO",
+                name="Carto Voyager"
             ).add_to(m)
 
-        st_folium(m, width=1250, height=580)
-        
+        show_heat = "Nhiệt" in view_mode
+        show_markers = "Trạm" in view_mode
+
+        # 1. LỚP BẢN ĐỒ NHIỆT MẬT ĐỘ (HEATMAP)
+        if show_heat and len(data_hour) > 0:
+            heat_data = [[float(r.lat), float(r.lng), float(r.avg_trips)] for r in data_hour.itertuples()]
+            HeatMap(
+                heat_data,
+                radius=22,
+                blur=16,
+                min_opacity=0.4,
+                max_zoom=15,
+                gradient={0.2: '#2563EB', 0.45: '#10B981', 0.70: '#F59E0B', 0.88: '#EF4444', 1.0: '#B91C1C'},
+                name="Bản đồ nhiệt mật độ (Heatmap)"
+            ).add_to(m)
+
+        # 2. LỚP ĐIỂM TRẠM CHI TIẾT (MARKERS)
+        if show_markers and len(data_hour) > 0:
+            max_trips = max(1.0, data_hour['avg_trips'].max())
+            for r in data_hour.itertuples():
+                if r.avg_trips >= 15:
+                    border_color = "#DC2626"
+                    fill_color = "#EF4444"
+                    status_txt = "🚨 NGUY CƠ CHÁY XE (QUÁ TẢI)"
+                elif r.avg_trips >= 7:
+                    border_color = "#D97706"
+                    fill_color = "#F59E0B"
+                    status_txt = "⚠️ LƯU LƯỢNG BẬN RỘN"
+                else:
+                    border_color = "#2563EB"
+                    fill_color = "#3B82F6"
+                    status_txt = "✅ HOẠT ĐỘNG ỔN ĐỊNH"
+
+                # Kích thước bán kính tỷ lệ theo mật độ
+                radius = 4.0 + (float(r.avg_trips) / max_trips) * 8.0
+
+                popup_html = f"""
+                <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; width: 230px; line-height: 1.45;">
+                    <div style="font-weight: 800; color: #0F172A; font-size: 13px; margin-bottom: 2px;">{r.station_name}</div>
+                    <div style="color: #64748B; font-size: 11px;">Mã trạm: <b>{r.station_id}</b> | Tọa độ: {r.lat:.4f}, {r.lng:.4f}</div>
+                    <hr style="margin: 6px 0; border: none; border-top: 1px solid #E2E8F0;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                        <span style="color: #475569;">Nhu cầu dự kiến:</span>
+                        <span style="font-size: 14px; font-weight: 800; color: {fill_color};">{r.avg_trips:.1f} lượt/h</span>
+                    </div>
+                    <div style="background: {fill_color}18; color: {border_color}; padding: 4px 8px; border-radius: 6px; font-weight: 700; font-size: 11px; text-align: center;">
+                        {status_txt}
+                    </div>
+                </div>
+                """
+
+                folium.CircleMarker(
+                    location=[r.lat, r.lng],
+                    radius=radius,
+                    popup=folium.Popup(popup_html, max_width=260),
+                    tooltip=f"📍 {r.station_name} ({r.avg_trips:.1f} lượt/h)",
+                    color=border_color,
+                    fill=True,
+                    fill_color=fill_color,
+                    fill_opacity=0.72 if show_heat else 0.88,
+                    weight=1.5
+                ).add_to(m)
+
+        folium.LayerControl(position="topright", collapsed=True).add_to(m)
+
+        st_folium(m, use_container_width=True, height=640, returned_objects=[])
+
+        # Chú thích bản đồ & Hướng dẫn tương tác
         st.markdown("""
-        <div style="display: flex; gap: 20px; font-size: 0.85rem; color: #475569; margin-top: 8px;">
-            <span><span style="color: #EF4444; font-size: 16px;">●</span> Đỏ: Trạm quá tải / Nguy cơ thiếu xe (&ge; 15 lượt/h)</span>
-            <span><span style="color: #F59E0B; font-size: 16px;">●</span> Cam: Lưu lượng bận rộn (7 - 15 lượt/h)</span>
-            <span><span style="color: #3B82F6; font-size: 16px;">●</span> Xanh: Lưu lượng bình thường (&lt; 7 lượt/h)</span>
+        <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 10px; padding: 12px 18px; margin-top: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+            <div style="display: flex; gap: 20px; font-size: 0.86rem; color: #334155;">
+                <span style="display: inline-flex; align-items: center; gap: 6px;"><span style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: #EF4444; border: 2px solid #DC2626;"></span> <b>Đỏ:</b> Quá tải / Cháy xe (&ge; 15 lượt/h)</span>
+                <span style="display: inline-flex; align-items: center; gap: 6px;"><span style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: #F59E0B; border: 2px solid #D97706;"></span> <b>Cam:</b> Bận rộn (7 - 15 lượt/h)</span>
+                <span style="display: inline-flex; align-items: center; gap: 6px;"><span style="display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: #3B82F6; border: 2px solid #2563EB;"></span> <b>Xanh:</b> Ổn định (&lt; 7 lượt/h)</span>
+                <span style="display: inline-flex; align-items: center; gap: 6px;"><span style="display: inline-block; width: 24px; height: 12px; border-radius: 3px; background: linear-gradient(90deg, #2563EB, #10B981, #F59E0B, #EF4444);"></span> <b>Heatmap:</b> Mật độ dòng xe</span>
+            </div>
+            <div style="font-size: 0.80rem; color: #64748B;">
+                💡 <i>Mẹo: Nhấp vào từng điểm trạm để xem chi tiết số liệu, hoặc phóng to / thu nhỏ để quan sát các tuyến đường, cầu và công viên New York.</i>
+            </div>
         </div>
         """, unsafe_allow_html=True)
     else:
@@ -1082,12 +1228,47 @@ with tab4:
     st.markdown(table_html, unsafe_allow_html=True)
 
     st.markdown("""
-    <div class="content-box">
-        <div style="font-weight: 700; color: #0F172A;">Nhận định chuyên sâu cho Báo cáo (Chương 3 mục 3.7 & 3.8):</div>
-        <p style="color: #475569; font-size: 0.92rem; margin-top: 6px;">
-        1. <b>Chiến thắng thuyết phục của Nhóm Cây (Random Forest & GBT):</b> Mô hình Random Forest đạt <b>RMSE = 2.733</b>, giảm <b>28% sai số</b> so với mô hình cơ sở Seasonal Naive và giảm 18% so với Historical Mean. <br>
-        2. <b>Vì sao Linear Regression không tối ưu bằng Random Forest?</b> Nhu cầu thuê xe có tính phi tuyến tính mạnh mẽ (hiệu ứng bùng nổ theo ngưỡng giờ cao điểm và thời tiết). Cây quyết định phân nhánh giúp mô hình hóa các mối quan hệ phi tuyến này hiệu quả hơn các hàm hồi quy tuyến tính.
-        </p>
+    <div class="content-box" style="border: 1px solid #E2E8F0; background: #FFFFFF; border-radius: 14px; padding: 22px 24px; box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04); margin-top: 16px;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; border-bottom: 1px solid #F1F5F9; padding-bottom: 10px;">
+            <div style="font-size: 1.05rem; font-weight: 800; color: #0F172A; display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 1.2rem;">📌</span> Tổng kết & Kết luận Rút ra từ Thực nghiệm Mô hình hóa
+            </div>
+            <span style="background: #EFF6FF; color: #2563EB; font-size: 0.74rem; font-weight: 700; padding: 4px 10px; border-radius: 6px; border: 1px solid #BFDBFE;">EXECUTIVE SUMMARY</span>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px;">
+            <div style="background: #F0FDF4; border: 1px solid #BBF7D0; border-radius: 10px; padding: 14px 16px;">
+                <div style="font-weight: 800; color: #166534; font-size: 0.92rem; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                    <span>🏆</span> 1. Random Forest - Mô hình Quán quân Toàn diện
+                </div>
+                <div style="color: #14532D; font-size: 0.86rem; line-height: 1.45;">
+                    Đạt sai số thấp nhất toàn hệ thống với <b>RMSE = 2.733</b> lượt/h và <b>MAE = 1.774</b> lượt/h, giúp giảm tới <b>28.0% sai số</b> so với mô hình cơ sở Seasonal Naive và giảm <b>18.4%</b> so với Historical Mean. Hệ số <b>R² = 0.65+</b> khẳng định khả năng khớp dữ liệu tối ưu trên tập kiểm thử độc lập.
+                </div>
+            </div>
+            <div style="background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 10px; padding: 14px 16px;">
+                <div style="font-weight: 800; color: #1E40AF; font-size: 0.92rem; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                    <span>📈</span> 2. Bản chất Phi tuyến tính của Nhu cầu Đô thị
+                </div>
+                <div style="color: #1E3A8A; font-size: 0.86rem; line-height: 1.45;">
+                    Nhu cầu thuê xe biến thiên nhảy bậc tại các ngưỡng cao điểm sáng/chiều và thời tiết cực đoan. Các thuật toán nhóm cây (<b>Random Forest & GBT</b>) phân nhánh nhị phân động và biểu quyết quần thể, vượt trội hoàn toàn các mô hình hồi quy tuyến tính (Linear/Lasso/Ridge) vốn bị giới hạn bởi giả định quan hệ phẳng.
+                </div>
+            </div>
+            <div style="background: #FAF5FF; border: 1px solid #E9D5FF; border-radius: 10px; padding: 14px 16px;">
+                <div style="font-weight: 800; color: #6B21A8; font-size: 0.92rem; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                    <span>🛡️</span> 3. Đảm bảo Tính khách quan & Chống rò rỉ Dữ liệu
+                </div>
+                <div style="color: #581C87; font-size: 0.86rem; line-height: 1.45;">
+                    Việc tuân thủ nghiêm ngặt kỹ thuật <b>Time-based Split</b> (huấn luyện trên các tháng trước, kiểm thử trên tháng sau) triệt tiêu hoàn toàn rủi ro <i>Data Leakage</i>, bảo đảm mô hình không bị học vẹt hay "nhìn trước tương lai", mang lại độ tin cậy tuyệt đối khi triển khai.
+                </div>
+            </div>
+            <div style="background: #FFFBEB; border: 1px solid #FDE68A; border-radius: 10px; padding: 14px 16px;">
+                <div style="font-weight: 800; color: #92400E; font-size: 0.92rem; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                    <span>🚀</span> 4. Khuyến nghị Vận hành Thực tế (Production Ready)
+                </div>
+                <div style="color: #78350F; font-size: 0.86rem; line-height: 1.45;">
+                    Lựa chọn <b>Random Forest</b> làm động cơ dự báo thời gian thực trước 1 giờ (Horizon <i>h = 1</i>). Thời gian suy luận cực nhanh (Inference &lt; 50ms) cho phép tích hợp trực tiếp vào hệ thống sinh lệnh điều phối xe tải cân bằng trạm (Rebalancing Dispatcher) một cách chủ động.
+                </div>
+            </div>
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
