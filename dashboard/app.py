@@ -668,8 +668,8 @@ with col1:
     st.markdown("""
     <div class="kpi-card">
         <div class="kpi-label">Tổng lượt thuê nạp</div>
-        <div class="kpi-value">1,888,085</div>
-        <div class="kpi-desc">✓ Tỷ lệ sạch 99.95% (Parquet)</div>
+        <div class="kpi-value">14,978,098</div>
+        <div class="kpi-desc">✓ Tỷ lệ sạch 98.87% (14.8M hợp lệ)</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -677,8 +677,8 @@ with col2:
     st.markdown("""
     <div class="kpi-card">
         <div class="kpi-label">Quy mô phân tích</div>
-        <div class="kpi-value">400 Trạm</div>
-        <div class="kpi-desc neutral">Chiếm 58% lưu lượng toàn NYC</div>
+        <div class="kpi-value">Top 400 Trạm</div>
+        <div class="kpi-desc neutral">Bận rộn nhất khu vực NYC</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -686,8 +686,8 @@ with col3:
     st.markdown("""
     <div class="kpi-card">
         <div class="kpi-label">Loại phương tiện</div>
-        <div class="kpi-value">64.3%</div>
-        <div class="kpi-desc">Xe đạp điện (Electric Bike)</div>
+        <div class="kpi-value">48.8%</div>
+        <div class="kpi-desc">Xe đạp điện (Classic bike 51.2%)</div>
     </div>
     """, unsafe_allow_html=True)
 
