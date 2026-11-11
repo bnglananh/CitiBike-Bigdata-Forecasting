@@ -82,7 +82,7 @@ def main():
     print("="*50)
 
     # 4. Lọc dữ liệu hợp lệ và ghi ra tầng Cleaned
-    cleaned = (d.filter(~(F.col('f_null_time') | F.col('f_bad_dur') | F.col('f_fake_trip') | F.col('f_geo')))
+    cleaned = (d.filter(~(F.col('f_null_time') | F.col('f_bad_dur') | F.col('f_fake_trip') | F.col('f_geo') | F.col('f_no_station')))
                 .filter((F.col('started_at') >= LO) & (F.col('started_at') < END))
                 .drop(*FLAGS, 'f_no_station'))
 

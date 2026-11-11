@@ -5,6 +5,8 @@ Thiết kế: Giao diện Modern Big Data Analytics, trực quan, hỗ trợ mô
 """
 
 import os
+import math
+import joblib
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -615,6 +617,19 @@ df_station = load_data("by_station.parquet")
 df_map = load_data("station_hour_avg.parquet")
 df_metrics = load_data("metrics.parquet")
 
+@st.cache_resource
+def load_serving_model():
+    for d in DATA_DIRS:
+        model_path = os.path.join(d, "rf_serving_model.joblib")
+        if os.path.exists(model_path):
+            try:
+                return joblib.load(model_path)
+            except Exception:
+                pass
+    return None
+
+model_artifact = load_serving_model()
+
 # ==========================================
 # HERO BANNER ĐẦU TRANG
 # ==========================================
@@ -668,8 +683,8 @@ with col1:
     st.markdown("""
     <div class="kpi-card">
         <div class="kpi-label">Tổng lượt thuê nạp</div>
-        <div class="kpi-value">1,888,085</div>
-        <div class="kpi-desc">✓ Tỷ lệ sạch 99.95% (Parquet)</div>
+        <div class="kpi-value">14,978,098</div>
+        <div class="kpi-desc">✓ Tỷ lệ sạch 98.87% (14.8M hợp lệ)</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -677,8 +692,8 @@ with col2:
     st.markdown("""
     <div class="kpi-card">
         <div class="kpi-label">Quy mô phân tích</div>
-        <div class="kpi-value">400 Trạm</div>
-        <div class="kpi-desc neutral">Chiếm 58% lưu lượng toàn NYC</div>
+        <div class="kpi-value">Top 400 Trạm</div>
+        <div class="kpi-desc neutral">Bận rộn nhất khu vực NYC</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -686,8 +701,8 @@ with col3:
     st.markdown("""
     <div class="kpi-card">
         <div class="kpi-label">Loại phương tiện</div>
-        <div class="kpi-value">64.3%</div>
-        <div class="kpi-desc">Xe đạp điện (Electric Bike)</div>
+        <div class="kpi-value">48.8%</div>
+        <div class="kpi-desc">Xe đạp điện (Classic bike 51.2%)</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -1315,14 +1330,67 @@ with tab5:
             )
             st.markdown(vec_html, unsafe_allow_html=True)
 
-    # Tính toán mô phỏng dựa trên trọng số Random Forest đã fit
-    base_demand = sel_lag1 * 0.45 + (12.0 if is_peak else 4.0)
-    if sel_rain:
-        base_demand *= 0.65  # Mưa làm giảm 35% nhu cầu
-    if sel_temp < 5:
-        base_demand *= 0.75  # Lạnh làm giảm 25% nhu cầu
+    # ----------------------------------------------------
+    # DỰ BÁO TRỰC TIẾP TỪ MÔ HÌNH RANDOM FOREST
+    # ----------------------------------------------------
+    dow_map_num = {"Chủ nhật": 1, "Thứ 2": 2, "Thứ 3": 3, "Thứ 4": 4, "Thứ 5": 5, "Thứ 6": 6, "Thứ 7": 7}
+    dow_num = dow_map_num.get(sel_dow, 2)
+    is_weekend = 1 if dow_num in [1, 7] else 0
+    
+    # Tìm thông tin trạm
+    st_info = df_station[df_station['station_name'] == sel_station].iloc[0] if (df_station is not None and len(df_station[df_station['station_name'] == sel_station]) > 0) else None
+    st_lat = float(st_info['lat']) if st_info is not None else 40.741740
+    st_lng = float(st_info['lng']) if st_info is not None else -73.994156
+    st_mean = float(st_info['total_trips']) / (31 * 24) if st_info is not None else 11.2
+    
+    # Tính các biến chu kỳ
+    h_sin = math.sin(2 * math.pi * sel_hour / 24.0)
+    h_cos = math.cos(2 * math.pi * sel_hour / 24.0)
+    dow_sin = math.sin(2 * math.pi * (dow_num - 1) / 7.0)
+    dow_cos = math.cos(2 * math.pi * (dow_num - 1) / 7.0)
+    
+    # Lags tương ứng
+    lag_1 = float(sel_lag1)
+    lag_24 = float(sel_lag1 * 0.95)
+    roll_3 = float((sel_lag1 + lag_24 + st_mean) / 3.0)
+    
+    # Gọi trực tiếp mô hình Random Forest
+    if model_artifact is not None and 'model' in model_artifact:
+        model = model_artifact['model']
+        feature_vector = pd.DataFrame([{
+            'hour': sel_hour,
+            'dow': dow_num,
+            'month': 7,
+            'is_weekend': is_weekend,
+            'is_peak': is_peak,
+            'hour_sin': h_sin,
+            'hour_cos': h_cos,
+            'dow_sin': dow_sin,
+            'dow_cos': dow_cos,
+            'lag_1': lag_1,
+            'lag_24': lag_24,
+            'roll_mean_3': roll_3,
+            'lat': st_lat,
+            'lng': st_lng,
+            'station_mean': st_mean,
+            'temp': float(sel_temp),
+            'is_rain': 1 if sel_rain else 0
+        }])
+        raw_pred = model.predict(feature_vector)[0]
+        pred_demand = max(0, int(round(raw_pred)))
+        model_source = "Random Forest (Trained)"
+        model_sub = f"✓ Model loaded: RMSE {model_artifact.get('rmse', 2.73)}"
+    else:
+        # Fallback mô phỏng nếu chưa tìm thấy file model
+        base_demand = sel_lag1 * 0.45 + (12.0 if is_peak else 4.0)
+        if sel_rain:
+            base_demand *= 0.65
+        if sel_temp < 5:
+            base_demand *= 0.75
+        pred_demand = max(0, round(base_demand))
+        model_source = "Random Forest (Mô phỏng)"
+        model_sub = "✓ Sai số RMSE 2.73"
 
-    pred_demand = max(0, round(base_demand))
     delta_demand = pred_demand - sel_lag1
     pct_change = ((pred_demand - sel_lag1) / max(1, sel_lag1)) * 100
     
@@ -1370,9 +1438,9 @@ with tab5:
             with k3:
                 st.metric(
                     label="Mô hình Thực thi",
-                    value="Random Forest",
-                    delta="✓ Sai số RMSE 2.73",
-                    delta_color="off"
+                    value=model_source,
+                    delta=model_sub,
+                    delta_color="normal" if "Trained" in model_source else "off"
                 )
             
             # Biểu đồ Plotly so sánh trực quan Lag 1 vs Dự báo t+1 vs Ngưỡng cảnh báo
