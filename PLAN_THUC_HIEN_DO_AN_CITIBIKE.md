@@ -80,7 +80,7 @@ Các con số dưới đây là ước lượng của mình. Hãy đo lại sau 
 | Spark | 3.5.x, dùng PySpark | Chế độ standalone, 1 master và 2 worker. Khi phát triển dùng local\[\*\] |
 | Java | JDK 11 nếu cài tay | JDK 11 chạy được cả Hadoop 3.3.x và Spark 3.5.x. Dùng image chính thức thì Java đã đóng gói sẵn |
 | Python | 3.10 hoặc 3.11 | Chọn bản mà PySpark đã chọn hỗ trợ |
-| Thư viện Python | pyspark, pandas, pyarrow, plotly, folium, streamlit, streamlit-folium, holidays, requests | Ghi vào requirements.txt |
+| Thư viện Python | pyspark, pandas, pyarrow, plotly, folium, streamlit, streamlit-folium, holidays, requests, scikit-learn, joblib | Ghi vào requirements.txt |
 | Notebook | JupyterLab | Dùng cho EDA, còn quy trình chính viết thành script để chạy lại được |
 | Quản lý mã | Git, một kho riêng tư trên GitHub | Mỗi người một nhánh, gộp qua pull request |
 
@@ -658,6 +658,12 @@ Các bảng by\_dow, by\_month, heat, by\_station, station\_hour\_avg (trung bì
 
 Bảng dự báo đủ 8 mô hình sẽ rất lớn (hàng triệu dòng mỗi mô hình), nên chỉ đưa vào dashboard mô hình tốt nhất và một baseline. Số liệu so sánh đủ các mô hình nằm trong bảng metrics nhỏ.
 
+Đặc biệt, để hỗ trợ Tab 5 suy luận tức thời (Offline Inference) với thời gian phản hồi dưới 15ms mà không cần nạp Spark MLlib Pipeline nặng nề, dự án bổ sung bước xuất mô hình phục vụ:
+```bash
+python jobs/export_serving_model.py
+```
+Script này huấn luyện mô hình Random Forest bằng `scikit-learn` (40 cây, `max_depth=10`, 16 đặc trưng chuẩn) khớp với kiến trúc Spark RF, xuất file nhị phân `rf_serving_model.joblib` (~4.35 MB) và trích xuất 5.000 dòng mẫu từ tập Test (`test_sample.parquet`) cho dashboard gọi trực tiếp.
+
 ### Khung ứng dụng
 
 ```python
@@ -723,6 +729,7 @@ Phan_Tich_Du_Bao_CitiBike/
     05_baseline.py              # Đánh giá Seasonal Naive & Historical Mean
     06_train_eval.py            # Huấn luyện 6 mô hình MLlib & xuất metrics
     07_export_serving.py        # Xuất các bảng tầng serving cho dashboard
+    export_serving_model.py     # Huấn luyện scikit-learn RF serving & xuất test_sample
     08_bigdata_experiments.py   # Thí nghiệm CSV vs Parquet & Column Pruning
     mapreduce/                  # Mã nguồn Hadoop Streaming MapReduce
       mapper.py

@@ -72,6 +72,10 @@ docker exec -it citibike-spark-master /opt/spark/bin/spark-submit \
   --master spark://spark-master:7077 \
   /opt/spark/jobs/01_explore.py
 ```
+*Lưu ý: Sau khi chạy xong chuỗi Job 01 -> Job 07 trên cụm Spark, chạy lệnh sau trên máy chủ (host) để huấn luyện mô hình phục vụ nhẹ và trích xuất mẫu Test cho Dashboard:*
+```bash
+python jobs/export_serving_model.py
+```
 
 ### d. Chạy Thí nghiệm Hadoop Streaming MapReduce
 ```bash
