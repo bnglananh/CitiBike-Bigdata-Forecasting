@@ -616,6 +616,7 @@ df_heat = load_data("heat.parquet")
 df_station = load_data("by_station.parquet")
 df_map = load_data("station_hour_avg.parquet")
 df_metrics = load_data("metrics.parquet")
+df_test_sample = load_data("test_sample.parquet")
 
 @st.cache_resource
 def load_serving_model():
@@ -1288,166 +1289,143 @@ with tab4:
     """, unsafe_allow_html=True)
 
 # ----------------------------------------------------
-# TAB 5: TRÌNH GIẢ LẬP DỰ BÁO 1 GIỜ TỚI
+# TAB 5: MÔ PHỎNG DỰ BÁO VÀ HỖ TRỢ ĐIỀU PHỐI (TEST INFERENCE)
 # ----------------------------------------------------
 with tab5:
-    st.markdown('<div class="box-title">Trình Giả lập Dự báo Nhu cầu & Hỗ trợ Ra quyết định Điều phối Xe (Real-time Simulation)</div>', unsafe_allow_html=True)
-    st.markdown('<div style="color: #64748B; font-size: 0.92rem; margin-top: -6px; margin-bottom: 16px;">Tùy biến các tham số ngữ cảnh (vị trí trạm, khung giờ, thời tiết, lịch sử 1h trước) để quan sát mô hình Random Forest dự báo trực tiếp và sinh lệnh điều phối vận hành tương ứng.</div>', unsafe_allow_html=True)
+    st.markdown('<div class="box-title">Mô phỏng Dự báo Nhu cầu & Hỗ trợ Ra quyết định Điều phối (Offline Inference)</div>', unsafe_allow_html=True)
+    st.markdown('<div style="color: #64748B; font-size: 0.92rem; margin-top: -6px; margin-bottom: 16px;">Nạp trực tiếp mô hình Random Forest (16 đặc trưng chuẩn) được huấn luyện trên tập Train thực tế để suy luận trên tập Test và đối chiếu với số lượt thuê thực tế.</div>', unsafe_allow_html=True)
 
     col_sim_in, col_sim_out = st.columns([5, 7], gap="large")
 
-    station_list = df_station['station_name'].tolist() if df_station is not None else ["W 21 St & 6 Ave", "8 Ave & W 31 St", "1 Ave & E 68 St"]
-    
     with col_sim_in:
         with st.container(border=True):
-            st.markdown('<div class="sim-header"><span>Thiết lập Ngữ cảnh Vận hành</span><span class="sim-tag-live">Tham số đầu vào</span></div>', unsafe_allow_html=True)
+            st.markdown('<div class="sim-header"><span>Chọn Kịch bản Kiểm thử Thực tế</span><span class="sim-tag-live">Tập Test (Ngày 26-hết tháng)</span></div>', unsafe_allow_html=True)
             
-            sel_station = st.selectbox("1. Trạm xe cần khảo sát:", station_list, index=0)
-            
-            c_sub1, c_sub2 = st.columns(2)
-            with c_sub1:
-                sel_dow = st.selectbox("2. Ngày trong tuần:", ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"], index=0)
-            with c_sub2:
-                sel_hour = st.slider("3. Khung giờ dự báo (t):", 0, 23, 9, format="%d:00")
+            if df_test_sample is not None and len(df_test_sample) > 0:
+                station_names = sorted(df_test_sample['station_name'].unique().tolist())
+                sel_station = st.selectbox("1. Chọn trạm xe kiểm thử:", station_names, index=0)
                 
-            c_sub3, c_sub4 = st.columns(2)
-            with c_sub3:
-                sel_lag1 = st.number_input("4. Lượt thuê 1h trước (Lag 1):", min_value=0, max_value=80, value=18, step=1)
-            with c_sub4:
-                sel_temp = st.slider("5. Nhiệt độ dự kiến (°C):", -5, 38, 22)
+                st_subset = df_test_sample[df_test_sample['station_name'] == sel_station]
+                time_list = st_subset['hour_ts'].tolist()
+                sel_time = st.selectbox("2. Chọn mốc thời gian (Năm-Tháng-Ngày Giờ):", time_list, index=0)
                 
-            sel_rain = st.checkbox("Có mưa / thời tiết ẩm ướt trong giờ tới", value=False)
-            
-            # Đặc trưng phái sinh
-            is_peak = 1 if sel_dow not in ["Thứ 7", "Chủ nhật"] and sel_hour in [7, 8, 9, 17, 18, 19] else 0
-            peak_text = "Giờ Cao điểm (Peak)" if is_peak else "Giờ Thường (Off-Peak)"
-            peak_color = "#DC2626" if is_peak else "#2563EB"
-            
-            vec_html = (
-                '<div style="background: #F8FAFC; border: 1px dashed #CBD5E1; border-radius: 8px; padding: 10px 12px; margin-top: 10px; font-size: 0.8rem; color: #475569;">'
-                f'<b>Feature Vector ML:</b> Trạm [{sel_station[:18]}...] • Giờ {sel_hour}h (<span style="color: {peak_color}; font-weight: 700;">{peak_text}</span>) • {sel_dow} • Lag1={sel_lag1} • {sel_temp}°C • Mưa={"Có" if sel_rain else "Không"}'
-                '</div>'
-            )
-            st.markdown(vec_html, unsafe_allow_html=True)
+                row_data = st_subset[st_subset['hour_ts'] == sel_time].iloc[0]
+                
+                c_sub1, c_sub2 = st.columns(2)
+                with c_sub1:
+                    st.metric("Khung giờ (h)", f"{int(row_data['hour'])}:00")
+                with c_sub2:
+                    st.metric("Thứ trong tuần", f"Thứ {int(row_data['dow'])}" if row_data['dow'] > 1 else "Chủ nhật")
 
-    # ----------------------------------------------------
-    # DỰ BÁO TRỰC TIẾP TỪ MÔ HÌNH RANDOM FOREST
-    # ----------------------------------------------------
-    dow_map_num = {"Chủ nhật": 1, "Thứ 2": 2, "Thứ 3": 3, "Thứ 4": 4, "Thứ 5": 5, "Thứ 6": 6, "Thứ 7": 7}
-    dow_num = dow_map_num.get(sel_dow, 2)
-    is_weekend = 1 if dow_num in [1, 7] else 0
-    
-    # Tìm thông tin trạm
-    st_info = df_station[df_station['station_name'] == sel_station].iloc[0] if (df_station is not None and len(df_station[df_station['station_name'] == sel_station]) > 0) else None
-    st_lat = float(st_info['lat']) if st_info is not None else 40.741740
-    st_lng = float(st_info['lng']) if st_info is not None else -73.994156
-    st_mean = float(st_info['total_trips']) / (31 * 24) if st_info is not None else 11.2
-    
-    # Tính các biến chu kỳ
-    h_sin = math.sin(2 * math.pi * sel_hour / 24.0)
-    h_cos = math.cos(2 * math.pi * sel_hour / 24.0)
-    dow_sin = math.sin(2 * math.pi * (dow_num - 1) / 7.0)
-    dow_cos = math.cos(2 * math.pi * (dow_num - 1) / 7.0)
-    
-    # Lags tương ứng
-    lag_1 = float(sel_lag1)
-    lag_24 = float(sel_lag1 * 0.95)
-    roll_3 = float((sel_lag1 + lag_24 + st_mean) / 3.0)
-    
-    # Gọi trực tiếp mô hình Random Forest
-    if model_artifact is not None and 'model' in model_artifact:
+                c_sub3, c_sub4 = st.columns(2)
+                with c_sub3:
+                    st.metric("Lag 1 (1h trước)", f"{int(row_data['lag_1'])} xe")
+                with c_sub4:
+                    st.metric("Lag 24 (24h trước)", f"{int(row_data['lag_24'])} xe")
+
+                c_sub5, c_sub6 = st.columns(2)
+                with c_sub5:
+                    st.metric("Lag 168 (1 tuần trước)", f"{int(row_data['lag_168'])} xe")
+                with c_sub6:
+                    st.metric("Rolling Mean 3h", f"{row_data['roll_mean_3']:.1f} xe")
+
+                actual_trips = int(row_data['trips'])
+                sel_hour = int(row_data['hour'])
+                sel_lag1 = int(row_data['lag_1'])
+                
+                # Chuẩn bị vector 16 đặc trưng đúng thứ tự
+                FEATURES = [
+                    'hour', 'dow', 'month', 'is_weekend', 'is_peak',
+                    'hour_sin', 'hour_cos', 'dow_sin', 'dow_cos',
+                    'lag_1', 'lag_24', 'lag_168', 'roll_mean_3',
+                    'lat', 'lng', 'station_mean'
+                ]
+                feature_vector = pd.DataFrame([row_data[FEATURES].to_dict()])
+                
+                vec_html = (
+                    '<div style="background: #F8FAFC; border: 1px dashed #CBD5E1; border-radius: 8px; padding: 10px 12px; margin-top: 10px; font-size: 0.8rem; color: #475569;">'
+                    f'<b>Vector 16 đặc trưng chuẩn:</b> Trạm [{sel_station[:18]}...] • {sel_time}:00 • '
+                    f'Lag1={int(row_data["lag_1"])} • Lag24={int(row_data["lag_24"])} • Lag168={int(row_data["lag_168"])} • StationMean={row_data["station_mean"]:.1f}'
+                    '</div>'
+                )
+                st.markdown(vec_html, unsafe_allow_html=True)
+            else:
+                st.warning("Chưa tìm thấy tập mẫu test_sample.parquet. Vui lòng chạy jobs/export_serving_model.py")
+                feature_vector = None
+                actual_trips = 0
+                sel_hour = 9
+                sel_lag1 = 0
+                sel_station = "Chưa nạp dữ liệu"
+
+    # Gọi mô hình Random Forest thật
+    if model_artifact is not None and 'model' in model_artifact and feature_vector is not None:
         model = model_artifact['model']
-        feature_vector = pd.DataFrame([{
-            'hour': sel_hour,
-            'dow': dow_num,
-            'month': 7,
-            'is_weekend': is_weekend,
-            'is_peak': is_peak,
-            'hour_sin': h_sin,
-            'hour_cos': h_cos,
-            'dow_sin': dow_sin,
-            'dow_cos': dow_cos,
-            'lag_1': lag_1,
-            'lag_24': lag_24,
-            'roll_mean_3': roll_3,
-            'lat': st_lat,
-            'lng': st_lng,
-            'station_mean': st_mean,
-            'temp': float(sel_temp),
-            'is_rain': 1 if sel_rain else 0
-        }])
         raw_pred = model.predict(feature_vector)[0]
         pred_demand = max(0, int(round(raw_pred)))
-        model_source = "Random Forest (Trained)"
-        model_sub = f"✓ Model loaded: RMSE {model_artifact.get('rmse', 2.73)}"
+        model_source = "Random Forest (Trained Sklearn)"
+        test_rmse = model_artifact.get('test_metrics', {}).get('rmse', 3.966)
+        model_sub = f"✓ RMSE Test: {test_rmse:.3f}"
     else:
-        # Fallback mô phỏng nếu chưa tìm thấy file model
-        base_demand = sel_lag1 * 0.45 + (12.0 if is_peak else 4.0)
-        if sel_rain:
-            base_demand *= 0.65
-        if sel_temp < 5:
-            base_demand *= 0.75
-        pred_demand = max(0, round(base_demand))
-        model_source = "Random Forest (Mô phỏng)"
-        model_sub = "✓ Sai số RMSE 2.73"
+        pred_demand = 0
+        model_source = "Chưa sẵn sàng"
+        model_sub = "N/A"
 
     delta_demand = pred_demand - sel_lag1
     pct_change = ((pred_demand - sel_lag1) / max(1, sel_lag1)) * 100
-    
+
     with col_sim_out:
         with st.container(border=True):
-            st.markdown('<div class="sim-header"><span>Kết quả Dự báo & Chỉ đạo Điều phối</span><span class="sim-tag-live">Chân trời h = 1 Giờ</span></div>', unsafe_allow_html=True)
+            st.markdown('<div class="sim-header"><span>Kết quả Suy luận & Đối chiếu Thực tế</span><span class="sim-tag-live">Chân trời h = 1 Giờ</span></div>', unsafe_allow_html=True)
             
-            # Xác định trạng thái rủi ro
+            # Đánh giá cảnh báo
             if pred_demand >= 18:
-                status_title = "NGUY CƠ THIẾU XE"
-                status_desc = "Cảnh báo quá tải / Cháy xe"
+                status_title = "CẢNH BÁO NHU CẦU CAO"
+                status_desc = "Nguy cơ thiếu xe tại trạm"
                 status_color = "#DC2626"
-                delta_cls = "up"
-                delta_sign = "+"
             elif pred_demand <= 3:
-                status_title = "DƯ THỪA XE / AN TOÀN"
-                status_desc = "Trạm an toàn / Dễ đầy bãi cắm"
+                status_title = "NHU CẦU THẤP"
+                status_desc = "Trạm vắng khách"
                 status_color = "#16A34A"
-                delta_cls = "down"
-                delta_sign = ""
             else:
-                status_title = "VẬN HÀNH ỔN ĐỊNH"
-                status_desc = "Lưu lượng tự cân bằng"
+                status_title = "NHU CẦU TRUNG BÌNH"
+                status_desc = "Vận hành ổn định"
                 status_color = "#0284C7"
-                delta_cls = "stable"
-                delta_sign = "+" if delta_demand > 0 else ""
 
-            delta_str = f"{delta_sign}{delta_demand} xe ({pct_change:+.1f}%)" if delta_demand != 0 else "0 xe (Không đổi)"
-
-            k1, k2, k3 = st.columns(3)
+            k1, k2, k3, k4 = st.columns(4)
             with k1:
                 st.metric(
-                    label=f"Dự báo lúc {sel_hour}:00 - {sel_hour}:59",
+                    label=f"Mô hình Dự báo",
                     value=f"{pred_demand} xe",
-                    delta=delta_str,
-                    delta_color="inverse" if pred_demand >= 18 else "normal"
+                    delta=f"{pred_demand - sel_lag1:+d} so với 1h trước"
                 )
             with k2:
+                err_diff = pred_demand - actual_trips
+                st.metric(
+                    label=f"Thực tế ghi nhận",
+                    value=f"{actual_trips} xe",
+                    delta=f"Lệch: {err_diff:+d} xe",
+                    delta_color="off" if abs(err_diff) <= 2 else "inverse"
+                )
+            with k3:
                 st.metric(
                     label="Mức độ Nhu cầu",
                     value=status_title,
                     delta=status_desc,
                     delta_color="off"
                 )
-            with k3:
+            with k4:
                 st.metric(
                     label="Mô hình Thực thi",
-                    value=model_source,
+                    value="Random Forest",
                     delta=model_sub,
-                    delta_color="normal" if "Trained" in model_source else "off"
+                    delta_color="normal"
                 )
             
-            # Biểu đồ Plotly so sánh trực quan Lag 1 vs Dự báo t+1 vs Ngưỡng cảnh báo
+            # Biểu đồ Plotly so sánh 1h trước vs Dự báo vs Thực tế vs Ngưỡng
             df_chart = pd.DataFrame({
-                'Giai đoạn': ['1h trước (Lag 1)', f'Dự báo ({sel_hour}h)', 'Ngưỡng Báo động'],
-                'Số lượt xe': [sel_lag1, pred_demand, 18],
-                'Màu': ['#94A3B8', status_color, '#EF4444']
+                'Giai đoạn': ['1h trước (Lag 1)', f'Dự báo ({sel_hour}h)', f'Thực tế ({sel_hour}h)', 'Ngưỡng cảnh báo cao'],
+                'Số lượt xe': [sel_lag1, pred_demand, actual_trips, 18],
+                'Màu': ['#94A3B8', status_color, '#10B981', '#EF4444']
             })
             
             fig_sim = px.bar(
@@ -1457,32 +1435,33 @@ with tab5:
                 color_discrete_map={
                     '1h trước (Lag 1)': '#94A3B8',
                     f'Dự báo ({sel_hour}h)': status_color,
-                    'Ngưỡng Báo động': '#FCA5A5'
+                    f'Thực tế ({sel_hour}h)': '#10B981',
+                    'Ngưỡng cảnh báo cao': '#FCA5A5'
                 },
                 text='Số lượt xe'
             )
             fig_sim.update_layout(
-                height=150,
+                height=180,
                 margin=dict(l=10, r=20, t=10, b=10),
                 plot_bgcolor='white',
                 showlegend=False,
-                xaxis=dict(showgrid=True, gridcolor="#F1F5F9", range=[0, max(28, pred_demand + 8, sel_lag1 + 8)]),
+                xaxis=dict(showgrid=True, gridcolor="#F1F5F9", range=[0, max(28, pred_demand + 8, actual_trips + 8, sel_lag1 + 8)]),
                 yaxis=dict(showgrid=False)
             )
             fig_sim.update_traces(textposition='outside', textfont=dict(weight="bold"))
             st.plotly_chart(fig_sim, use_container_width=True)
             
-            # Phiếu Lệnh Điều phối Thực tế (Smart City Dispatch Directive)
+            # Phiếu khuyến nghị điều phối
+            deadline_hour = sel_hour - 1 if sel_hour > 0 else 23
             if pred_demand >= 18:
-                deadline_hour = sel_hour - 1 if sel_hour > 0 else 23
                 ticket_html = (
                     f'<div class="dispatch-ticket overload">'
                     f'<span class="ticket-badge overload">LỆNH ĐIỀU PHỐI KHẨN CẤP • MÃ: DISPATCH-NYC-{sel_hour:02d}</span>'
                     f'<div style="font-weight: 700; font-size: 0.96rem; margin-bottom: 6px;">Cảnh báo Cháy xe tại trạm: {sel_station}</div>'
                     f'<div style="font-size: 0.86rem; line-height: 1.5;">'
-                    f'• <b>Nguy cơ tác nghiệp:</b> Dự kiến có <b>{pred_demand} lượt lấy xe</b> trong giờ tới, vượt ngưỡng an toàn (18 lượt). Trạm có nguy cơ hết sạch xe trong 20 phút đầu giờ.<br>'
-                    f'• <b>Chỉ thị điều xe:</b> Lệnh cho xe tải chuyên dụng bốc chuyển <b>15 - 20 xe</b> từ các trạm lân cận có lưu lượng thấp đến bù trước <b>{deadline_hour:02d}:45</b>.<br>'
-                    f'• <b>Ưu tiên:</b> Cấp độ 1 (Khẩn cấp phục vụ hành khách đi làm khung giờ cao điểm).'
+                    f'• <b>Nguy cơ tác nghiệp:</b> Dự kiến có <b>{pred_demand} lượt lấy xe</b> trong giờ tới (Thực tế: {actual_trips} lượt), vượt ngưỡng cao (18 lượt).<br>'
+                    f'• <b>Chỉ thị điều xe:</b> Đề xuất xe tải chuyên dụng bốc chuyển <b>15 - 20 xe</b> từ trạm lân cận sang trước <b>{deadline_hour:02d}:45</b>.<br>'
+                    f'• <b>Ưu tiên:</b> Cấp độ 1 (Khẩn cấp phục vụ khung giờ cao điểm).'
                     f'</div></div>'
                 )
             elif pred_demand <= 3:

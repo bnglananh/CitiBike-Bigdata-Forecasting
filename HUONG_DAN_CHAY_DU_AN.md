@@ -134,6 +134,7 @@ Phan_Tich_Du_Bao_CitiBike/
 │   ├── 05_baseline.py            # Job 05: Đánh giá mô hình cơ sở Seasonal Naive & Historical Mean
 │   ├── 06_train_eval.py          # Job 06: Huấn luyện 6 mô hình Spark MLlib & xuất metrics lên HDFS
 │   ├── 07_export_serving.py      # Job 07: Xuất bảng tầng Serving định dạng Parquet phục vụ Dashboard
+│   ├── export_serving_model.py   # Huấn luyện mô hình phục vụ scikit-learn & trích xuất mẫu Test (Offline Inference)
 │   ├── 08_bigdata_experiments.py # Job 08: Thí nghiệm Big Data (So sánh thời gian đọc CSV vs Parquet)
 │   └── mapreduce/                # Mã nguồn MapReduce Hadoop Streaming (mapper.py, reducer.py)
 │
@@ -165,11 +166,12 @@ Phan_Tich_Du_Bao_CitiBike/
 
 1. **Hệ điều hành:** Windows 10/11 (hỗ trợ WSL2 và Docker Desktop).
 2. **Docker Desktop:** Đã cài đặt và đang chạy. Khuyến nghị cấp tối thiểu **6 - 8 GB RAM** cho Docker (trong *Docker Desktop -> Settings -> Resources*).
-3. **Python:** Phiên bản Python 3.10, 3.11 hoặc 3.12 trên máy chủ Windows.
+3. **Python:** Phiên bản Python 3.10 trên máy chủ Windows.
 4. **Cài đặt thư viện Python:**
    ```bash
    pip install -r requirements.txt
    ```
+   *(Bao gồm: `pyspark==3.5.1`, `streamlit>=1.32.0`, `scikit-learn>=1.3.0`, `joblib>=1.3.0`, `pyarrow`, `folium`, `plotly`,...)*
 
 ---
 
@@ -200,8 +202,9 @@ Người dùng có thể lựa chọn **Phương án A** (Chạy nhanh tự đ�
 4. Trên màn hình Menu xuất hiện các tùy chọn:
    - Nhập `1`: Tự động tải dữ liệu Citi Bike (mặc định Tháng 01/2024 hoặc 4 tháng theo mùa).
    - Nhập `2`: Tự động đẩy file CSV lên cụm HDFS tầng raw.
-   - Nhập `A`: **CHẠY TỰ ĐỘNG TOÀN BỘ QUY TRÌNH** (Chạy liên hoàn từ Job 01 đến Job 07 và đồng bộ serving).
-   - Nhập `11`: Mở trực tiếp Web Dashboard trên trình duyệt tại `http://localhost:8501`.
+   - Nhập `A`: **CHẠY TỰ ĐỘNG TOÀN BỘ QUY TRÌNH** (Chạy liên hoàn từ Job 01 đến Job 07, huấn luyện mô hình phục vụ và đồng bộ serving).
+   - Nhập `11`: Chạy riêng bước huấn luyện mô hình phục vụ (`python jobs/export_serving_model.py`).
+   - Nhập `12`: Mở trực tiếp Web Dashboard trên trình duyệt tại `http://localhost:8501`.
 
 ---
 
@@ -327,7 +330,18 @@ docker exec -it citibike-spark-master /opt/spark/bin/spark-submit \
 
 ---
 
-#### BƯỚC 10: Khởi động Web Dashboard Trực quan hóa & Cockpit Điều phối
+#### BƯỚC 10: Huấn luyện Mô hình Phục vụ scikit-learn & Trích xuất Mẫu Test
+Để phục vụ suy luận tức thời (< 15ms) trên Web Dashboard mà không làm quá tải tài nguyên cụm Spark trong lúc thuyết trình, dự án tách biệt rõ tầng phân tích phân tán (Spark MLlib) và tầng phục vụ thực tế (Serving Layer). Chạy script để huấn luyện mô hình Random Forest bằng scikit-learn (40 cây, `maxDepth=10`, 16 đặc trưng chuẩn không có biến giả lập thời tiết) và trích xuất 5.000 dòng mẫu từ tập Test:
+```bash
+python jobs/export_serving_model.py
+```
+*Kết quả sinh ra:*
+- `dashboard/data/rf_serving_model.joblib` (và bản sao tại `data/serving/`, dung lượng chỉ ~4.35 MB).
+- `dashboard/data/test_sample.parquet` (và bản sao tại `data/serving/`, mẫu dữ liệu Test kèm nhãn thực tế).
+
+---
+
+#### BƯỚC 11: Khởi động Web Dashboard Trực quan hóa & Cockpit Điều phối
 Chạy ứng dụng giao diện Streamlit tại máy chủ:
 ```bash
 python -m streamlit run dashboard/app.py
@@ -371,14 +385,14 @@ docker exec -it citibike-namenode hdfs dfs -cat /citibike/mr_output_test/part-* 
 
 ### 1. Banner Đầu trang (Hero Banner)
 - **Tiêu đề chính:** *Nền tảng Phân tích Dữ liệu lớn Phân tán & Dự báo Nhu cầu Thuê xe*.
-- **Nhãn Dataset:** *Citi Bike NYC Open Data (Quy mô 14.9M+ bản ghi)*.
+- **Nhãn Dataset:** *Citi Bike NYC Open Data (Quy mô 14.97+ triệu bản ghi, 4 tháng theo mùa năm 2024)*.
 - **5 Micro-Card Kiến trúc:** Tóm tắt vai trò 5 trụ cột kỹ thuật: Hạ tầng lưu trữ HDFS, Động cơ tính toán Spark, Thuật toán MLlib, Quy trình không rò rỉ và Chân trời dự báo $h = 1$ Giờ.
 
 ### 2. Bộ 4 Thẻ KPI Tổng quan
-- **Tổng lượt thuê nạp:** 1,888,085 chuyến (Tỷ lệ sạch 99.95%).
-- **Quy mô phân tích:** 400 Trạm trọng điểm (Chiếm 58% lưu lượng toàn NYC).
+- **Tổng lượt thuê nạp:** 14.978.098 chuyến (Tỷ lệ sạch 99.95%).
+- **Quy mô phân tích:** 400 Trạm trọng điểm (Chiếm 46,91% lưu lượng toàn NYC với 7.026.653 chuyến).
 - **Loại phương tiện:** 64.3% Xe đạp điện (Electric Bike).
-- **Mô hình tốt nhất:** Random Forest (RMSE 2.73, Giảm 28% sai số).
+- **Mô hình tốt nhất:** Random Forest (Spark MLlib RMSE 2.733, Giảm 27,9% sai số so với Seasonal Naive; Mô hình Serving Test RMSE 3.966).
 
 ### 3. Hệ thống 5 Tab Điều hướng Trải dài 100% Độ rộng
 Thanh tab được thiết kế theo dạng **Segmented Control** màu xám bạc tinh tế, không có icon màu mè, hiển thị 5 module chuyên sâu:
@@ -403,15 +417,16 @@ Thanh tab được thiết kế theo dạng **Segmented Control** màu xám bạ
 - **Tab 4: Đấu trường Mô hình (Benchmark Leaderboard)**
   - Bảng xếp hạng Leaderboard phong cách Enterprise so sánh 8 thuật toán học máy.
   - Có huy hiệu vàng **#1 CHAMPION** cho Random Forest, huy hiệu Bạc **#2**, Đồng **#3** và nhãn **MỐC** cho các mô hình cơ sở.
-  - Cột *Cải thiện RMSE* minh chứng Random Forest giảm **-27.9%** sai số.
+  - Cột *Cải thiện RMSE* minh chứng Random Forest giảm **-27.9%** sai số so với Seasonal Naive và **-18.4%** so với Historical Mean.
 
-- **Tab 5: Trình giả lập Dự báo 1 Giờ Tới (Smart Operations Cockpit)**
-  - Bố cục 2 cột chuyên nghiệp:
-    - **Cột Trái (Thiết lập Ngữ cảnh):** Cho phép người vận hành chọn Trạm, Thứ, Khung giờ cần dự báo (thanh trượt màu xanh), Lượt thuê 1h trước, Nhiệt độ và Thời tiết mưa.
-    - **Cột Phải (Kết quả & Lệnh điều phối):**
-      - 3 Thẻ Metric cập nhật tức thời: Dự báo số lượt xe, Mức độ nhu cầu (Nguy cơ thiếu xe / Ổn định / Dư thừa xe), Thuật toán thực thi.
-      - Biểu đồ thanh ngang so sánh nhanh: `1h trước (Lag 1)` vs `Dự báo giờ tới` vs `Ngưỡng báo động trạm (18 xe)`.
-      - **Phiếu Lệnh Điều phối Xe Khẩn cấp (Dispatch Directive):** Tự động sinh mã lệnh điều phối, thời hạn hoàn thành trước giờ cao điểm và số lượng xe tải cần chuyển đến bù.
+- **Tab 5: Mô phỏng Dự báo và Hỗ trợ Điều phối (Offline Inference Cockpit)**
+  - Bố cục 2 cột chuyên nghiệp, vận hành trực tiếp trên dữ liệu kiểm thử thực nghiệm:
+    - **Cột Trái (Ngữ cảnh & Mẫu dữ liệu thực nghiệm):** Người vận hành chọn **Trạm xe** và **Mốc thời gian thực tế** từ tập Test (`test_sample.parquet`). Hệ thống hiển thị bảng thông số 16 đặc trưng chuỗi thời gian chuẩn xác (`lag_1`, `lag_24`, `lag_168`, `roll_mean_3`, Sin/Cos thời gian, `station_mean` không rò rỉ - loại bỏ hoàn toàn các giả lập thời tiết phi thực tế).
+    - **Cột Phải (Kết quả Suy luận Offline & Lệnh điều phối):**
+      - Tải mô hình phục vụ `rf_serving_model.joblib` (scikit-learn Random Forest) suy luận tức thời (< 15ms).
+      - **3 Thẻ Metric đối chiếu:** Số lượt dự báo ($\hat{y}$), Lượt thuê thực tế ($y$), và Sai số chênh lệch ($\Delta = \hat{y} - y$).
+      - **Biểu đồ Cột So sánh:** `Lượt thuê 1h trước (Lag 1)` vs `Thực tế` vs `Dự báo mô hình` vs `Ngưỡng báo động trạm`.
+      - **Phiếu Lệnh Điều phối Xe Vận hành (Smart City Dispatch Directive):** Tự động phân loại rủi ro (Nguy cơ thiếu xe / Ổn định / Dư thừa xe) và xuất mã lệnh điều phối xe tải chuyên dụng kèm hạn giờ xử lý trước giờ cao điểm.
 
 ---
 

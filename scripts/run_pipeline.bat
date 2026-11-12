@@ -28,14 +28,15 @@ echo  │  [9] Job 08: Thí nghiệm Big Data (So sánh tốc độ CSV vs Parqu
 echo  └────────────────────────────────────────────────────────────────────────┘
 echo  ┌─ [PHẦN IV: XUẤT PHỤC VỤ & DASHBOARD TRỰC QUAN HÓA] ────────────────────┐
 echo  │  [10] Job 07: Xuất dữ liệu tầng Serving cho Dashboard                   │
-echo  │  [11] Mở Dashboard Streamlit trên trình duyệt (http://localhost:8501)   │
+echo  │  [11] Huấn luyện Mô hình Serving & Mẫu Test (export_serving_model.py)   │
+echo  │  [12] Mở Dashboard Streamlit trên trình duyệt (http://localhost:8501)   │
 echo  └────────────────────────────────────────────────────────────────────────┘
 echo  ┌─ [TIỆN ÍCH] ───────────────────────────────────────────────────────────┐
-echo  │  [A]  CHẠY TỰ ĐỘNG TOÀN BỘ QUY TRÌNH (Từ bước 3 đến bước 10)            │
+echo  │  [A]  CHẠY TỰ ĐỘNG TOÀN BỘ QUY TRÌNH (Từ bước 3 đến bước 11)            │
 echo  │  [0]  Thoát                                                            │
 echo  └────────────────────────────────────────────────────────────────────────┘
 echo.
-set /p choice="👉 Nhập lựa chọn của bạn (0-11 hoặc A): "
+set /p choice="👉 Nhập lựa chọn của bạn (0-12 hoặc A): "
 
 if /i "%choice%"=="A" goto RUN_ALL
 if "%choice%"=="1" goto DOWNLOAD
@@ -48,7 +49,8 @@ if "%choice%"=="7" goto JOB_05
 if "%choice%"=="8" goto JOB_06
 if "%choice%"=="9" goto JOB_08
 if "%choice%"=="10" goto JOB_07
-if "%choice%"=="11" goto DASHBOARD
+if "%choice%"=="11" goto EXPORT_SERVING
+if "%choice%"=="12" goto DASHBOARD
 if "%choice%"=="0" exit /b 0
 goto MENU
 
@@ -124,33 +126,43 @@ echo ✓ Đã đồng bộ bảng phục vụ sang dashboard\data!
 pause
 goto MENU
 
+:EXPORT_SERVING
+echo.
+echo -> Đang huấn luyện Mô hình Phục vụ (scikit-learn RF) & Trích xuất mẫu Test...
+python jobs\export_serving_model.py
+pause
+goto MENU
+
 :RUN_ALL
 echo.
 echo ====================================================================
-echo        BẮT ĐẦU CHẠY TỰ ĐỘNG TOÀN BỘ QUY TRÌNH (TỪ JOB 01 ĐẾN JOB 07)
+echo        BẮT ĐẦU CHẠY TỰ ĐỘNG TOÀN BỘ QUY TRÌNH (TỪ JOB 01 ĐẾN BƯỚC XUẤT PHỤC VỤ)
 echo ====================================================================
 echo.
-echo [1/7] Chạy Job 01 Khảo sát...
+echo [1/8] Chạy Job 01 Khảo sát...
 docker exec citibike-spark-master /opt/spark/bin/spark-submit --master spark://spark-master:7077 /opt/spark/jobs/01_explore.py
 echo.
-echo [2/7] Chạy Job 02 Làm sạch...
+echo [2/8] Chạy Job 02 Làm sạch...
 docker exec citibike-spark-master /opt/spark/bin/spark-submit --master spark://spark-master:7077 /opt/spark/jobs/02_clean.py
 echo.
-echo [3/7] Chạy Job 03 Lưới giờ & Điền 0...
+echo [3/8] Chạy Job 03 Lưới giờ & Điền 0...
 docker exec citibike-spark-master /opt/spark/bin/spark-submit --master spark://spark-master:7077 /opt/spark/jobs/03_hourly.py
 echo.
-echo [4/7] Chạy Job 04 Đặc trưng...
+echo [4/8] Chạy Job 04 Đặc trưng...
 docker exec citibike-spark-master /opt/spark/bin/spark-submit --master spark://spark-master:7077 /opt/spark/jobs/04_features.py
 echo.
-echo [5/7] Chạy Job 05 Baselines...
+echo [5/8] Chạy Job 05 Baselines...
 docker exec citibike-spark-master /opt/spark/bin/spark-submit --master spark://spark-master:7077 /opt/spark/jobs/05_baseline.py
 echo.
-echo [6/7] Chạy Job 06 Train MLlib...
+echo [6/8] Chạy Job 06 Train MLlib...
 docker exec citibike-spark-master /opt/spark/bin/spark-submit --master spark://spark-master:7077 /opt/spark/jobs/06_train_eval.py
 echo.
-echo [7/7] Chạy Job 07 Xuất Serving...
+echo [7/8] Chạy Job 07 Xuất Serving Parquet...
 docker exec citibike-spark-master /opt/spark/bin/spark-submit --master spark://spark-master:7077 /opt/spark/jobs/07_export_serving.py
 powershell -Command "Copy-Item -Path 'data\serving\*' -Destination 'dashboard\data' -Force -ErrorAction SilentlyContinue"
+echo.
+echo [8/8] Huấn luyện Mô hình Phục vụ (rf_serving_model.joblib) & Trích xuất mẫu Test...
+python jobs\export_serving_model.py
 echo.
 echo ====================================================================
 echo   ✓ TOÀN BỘ PIPELINE ĐÃ CHẠY HOÀN TẤT THÀNH CÔNG!
