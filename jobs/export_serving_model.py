@@ -78,10 +78,10 @@ def main():
     print("-> Đang tính toán các đặc trưng chuỗi thời gian (Lags, Rolling, Sin/Cos)...")
     df_grid['dt'] = pd.to_datetime(df_grid['hour_ts'], format='%Y-%m-%d %H')
     df_grid['hour'] = df_grid['dt'].dt.hour
-    df_grid['dow'] = df_grid['dt'].dt.dayofweek + 1 # 1: Thứ 2, ..., 7: CN (quy ước Spark)
+    df_grid['dow'] = df_grid['dt'].dt.dayofweek + 1 # 1: Thứ 2, ..., 6: Thứ 7, 7: Chủ Nhật
     df_grid['month'] = df_grid['dt'].dt.month
     df_grid['day'] = df_grid['dt'].dt.day
-    df_grid['is_weekend'] = df_grid['dow'].isin([1, 7]).astype(int) # CN hoặc T7
+    df_grid['is_weekend'] = df_grid['dow'].isin([6, 7]).astype(int) # Thứ 7 (6) hoặc Chủ Nhật (7)
     df_grid['is_peak'] = ((df_grid['is_weekend'] == 0) & df_grid['hour'].isin([7, 8, 9, 17, 18, 19])).astype(int)
     
     df_grid['hour_sin'] = np.sin(2 * np.pi * df_grid['hour'] / 24.0)
