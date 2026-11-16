@@ -1498,8 +1498,8 @@ with tab5:
                 st.markdown('<div class="sim-header"><span>Thiết lập Kịch bản Vận hành Tương lai</span><span class="sim-tag-live">Dự báo Chủ động</span></div>', unsafe_allow_html=True)
                 
                 # Danh sách trạm
-                if df_by_station is not None and len(df_by_station) > 0:
-                    station_options = df_by_station['station_name'].tolist()
+                if df_station is not None and len(df_station) > 0:
+                    station_options = df_station['station_name'].tolist()
                 elif df_test_sample is not None and len(df_test_sample) > 0:
                     station_options = sorted(df_test_sample['station_name'].unique().tolist())
                 else:
@@ -1508,8 +1508,8 @@ with tab5:
                 sel_future_station = st.selectbox("1. Chọn trạm xe cần lập kế hoạch:", station_options, index=0)
                 
                 # Metadata trạm
-                if df_by_station is not None and sel_future_station in df_by_station['station_name'].values:
-                    st_info = df_by_station[df_by_station['station_name'] == sel_future_station].iloc[0]
+                if df_station is not None and sel_future_station in df_station['station_name'].values:
+                    st_info = df_station[df_station['station_name'] == sel_future_station].iloc[0]
                     st_lat = float(st_info['lat'])
                     st_lng = float(st_info['lng'])
                 elif df_test_sample is not None and sel_future_station in df_test_sample['station_name'].values:
@@ -1522,6 +1522,8 @@ with tab5:
                 # Station mean
                 if df_test_sample is not None and sel_future_station in df_test_sample['station_name'].values:
                     st_mean = float(df_test_sample[df_test_sample['station_name'] == sel_future_station]['station_mean'].mean())
+                elif df_map is not None and sel_future_station in df_map['station_name'].values:
+                    st_mean = float(df_map[df_map['station_name'] == sel_future_station]['avg_trips'].mean())
                 else:
                     st_mean = 7.5
 
